@@ -1,0 +1,53 @@
+{
+  "name": "@jojonadam/dsh-release",
+  "version": "0.1.0",
+  "description": "One-command release pipeline for DSH plugins: preflight checks, version bump, test, commit, SSH push, npm publish, registry verification, desktop install and hub submission. 发布流水线 · 凭据走钥匙串 · 默认只读。",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "skills",
+    "cordis.patch.yml",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "release",
+    "publish",
+    "npm",
+    "automation"
+  ],
+  "license": "MIT",
+  "author": "JOJO & Adam",
+  "homepage": "https://jojo-adam.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JOJO-Adam/dsh-release.git"
+  },
+  "engines": {
+    "dsh": ">=0.2.0-rc.2",
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "bugs": {
+    "url": "https://github.com/JOJO-Adam/dsh-release/issues"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "~4.0.5"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

@@ -1,0 +1,3 @@
+- insert:
+    - id: jojo-adam-release
+      name: '@jojonadam/dsh-release'
