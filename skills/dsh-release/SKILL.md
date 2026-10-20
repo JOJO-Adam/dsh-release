@@ -39,7 +39,10 @@ node scripts/release.mjs check --dir /path/to/dsh-xxx
 - `test/provider.test.mjs` 是否通过；
 - `npm pack --dry-run` 的文件清单（`test/` 不能进包）；
 - git 仓库、工作区状态、repository 是否 GitHub；
+- 可选：`--scan` 脱敏扫描（发布包内文件 + `~/.dsh/memory`）；
 - 可选：npm / GitHub 身份。
+
+`--scan` 会命中 npm / GitHub / sk- / AWS / Slack / 私钥 / 通用赋值 / 本机绝对路径；**high 级命中会阻断发布**，low 级只提示。
 
 ## 2. 发布
 
@@ -60,6 +63,8 @@ node scripts/release.mjs release --dir /path/to/dsh-xxx --bump patch --yes --ins
 流程：`check` → `npm version` → 测试 → commit → SSH push（含 tag）→ `npm publish` → 轮询 dist-tags 直到新版本生效 → （可选）安装。
 
 失败即停，不会带着半成品继续。
+
+`release` 默认带 `--scan`；确认要跳过时用 `--no-scan`。
 
 ## 3. 提交 hub
 

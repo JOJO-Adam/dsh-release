@@ -15,7 +15,7 @@
  * 设计原则：默认只读；写操作必须 --yes；release 前自动 check；失败即停。
  */
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 
@@ -41,7 +41,7 @@ function parseArgs(argv) {
       continue
     }
     const key = token.slice(2)
-    if (key === 'yes' || key === 'dry-run' || key === 'install' || key === 'no-tag') {
+    if (key === 'yes' || key === 'dry-run' || key === 'install' || key === 'no-tag' || key === 'scan' || key === 'no-scan') {
       out[key] = true
       continue
     }
@@ -154,6 +154,78 @@ function skillDirs(dir) {
     .filter((name) => existsSync(join(skillsRoot, name, 'SKILL.md')))
 }
 
+const SECRET_PATTERNS = [
+  { kind: 'npm token', severity: 'high', re: /\bnpm_[A-Za-z0-9]{36}\b/g },
+  { kind: 'GitHub token', severity: 'high', re: /\bgh[pousr]_[A-Za-z0-9]{36,}\b/g },
+  { kind: 'API key (sk-)', severity: 'high', re: /\bsk-[A-Za-z0-9]{20,}\b/g },
+  { kind: 'AWS access key', severity: 'high', re: /\bAKIA[0-9A-Z]{16}\b/g },
+  { kind: 'Slack token', severity: 'high', re: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g },
+  { kind: 'private key block', severity: 'high', re: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----\r?\n[A-Za-z0-9+/=\s]{20,}/g },
+  { kind: 'generic assignment', severity: 'medium', re: /\b(?:api[_-]?key|secret|token|password|passwd)\s*[=:]\s*["']?([A-Za-z0-9_\-]{16,})["']?/gi },
+  { kind: 'local absolute path', severity: 'low', re: /\/Users\/[A-Za-z0-9._-]+\//g },
+]
+
+function maskValue(value) {
+  return value.length <= 8 ? '***' : `${value.slice(0, 4)}***${value.slice(-2)}`
+}
+
+function looksPlaceholder(value) {
+  return /x{3,}|your|example|placeholder|change[-_]?me|redacted|dummy|test/i.test(value)
+}
+
+function scanText(text, file, findings) {
+  for (const pattern of SECRET_PATTERNS) {
+    pattern.re.lastIndex = 0
+    let match
+    while ((match = pattern.re.exec(text)) !== null) {
+      const captured = match[1] || match[0]
+      if (looksPlaceholder(captured)) continue
+      const line = text.slice(0, match.index).split('\n').length
+      findings.push({ file, line, kind: pattern.kind, severity: pattern.severity, masked: maskValue(captured) })
+      if (pattern.re.lastIndex === match.index) pattern.re.lastIndex++
+    }
+  }
+}
+
+function scanPackage(dir) {
+  const findings = []
+  const pack = JSON.parse(sh('npm', ['pack', '--dry-run', '--json', `--cache=${CACHE}`], { cwd: dir }).stdout)[0]
+  for (const file of pack.files) {
+    if (/\.(png|jpe?g|webp|gif|zip|gz|glb|blend|ico)$/i.test(file.path)) continue
+    let buffer
+    try {
+      buffer = readFileSync(join(dir, file.path))
+    } catch {
+      continue
+    }
+    if (buffer.includes(0)) continue
+    scanText(buffer.toString('utf8'), file.path, findings)
+  }
+  return findings
+}
+
+function scanMemory() {
+  const findings = []
+  const root = join(HOME, '.dsh/memory')
+  if (!existsSync(root)) return findings
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) walk(path)
+      else if (entry.name.endsWith('.md')) scanText(readFileSync(path, 'utf8'), path.replace(HOME, '~'), findings)
+    }
+  }
+  walk(root)
+  return findings
+}
+
+function printFindings(findings) {
+  const order = { high: 0, medium: 1, low: 2 }
+  for (const finding of findings.sort((a, b) => order[a.severity] - order[b.severity])) {
+    console.log(`   ${finding.severity.toUpperCase().padEnd(6)} ${finding.file}:${finding.line}  ${finding.kind}  ${finding.masked}`)
+  }
+}
+
 function bumpVersion(version, kind) {
   const [major, minor, patch] = version.split('-')[0].split('.').map(Number)
   if (kind === 'major') return `${major + 1}.0.0`
@@ -222,7 +294,7 @@ async function doctor() {
   process.exit(checks.every(([, , pass]) => pass) ? 0 : 1)
 }
 
-async function check({ quiet = false } = {}) {
+async function check({ quiet = false, scan = false } = {}) {
   const { pkg, patchPath } = packageInfo(targetDir)
   const problems = []
   const notes = []
@@ -270,12 +342,21 @@ async function check({ quiet = false } = {}) {
   if (!existsSync(join(targetDir, '.git'))) problems.push('不是 git 仓库')
   else if (gitStatus) notes.push('工作区有未提交改动（release 会一并提交）')
 
+  let findings = []
+  if (scan) {
+    findings = [...scanPackage(targetDir), ...scanMemory()]
+    const high = findings.filter((finding) => finding.severity === 'high').length
+    notes.push(findings.length === 0 ? '脱敏扫描干净' : `脱敏扫描命中 ${findings.length} 项（high ${high}）`)
+    if (high > 0) problems.push(`发现 ${high} 处高置信明文密钥（见下方列表）`)
+  }
+
   const slug = repoSlug(pkg)
   if (!slug) problems.push('repository.url 不是 GitHub 仓库')
 
   if (!quiet) {
     say(`📦 ${pkg.name}@${pkg.version}`)
     for (const note of notes) say(`   · ${note}`)
+    if (findings.length) printFindings(findings)
     for (const problem of problems) console.log(`❌ ${problem}`)
     if (problems.length === 0) ok('check 全部通过')
     else warn(`${problems.length} 个问题`)
@@ -286,7 +367,7 @@ async function check({ quiet = false } = {}) {
 
 async function release() {
   if (!args.yes && !args['dry-run']) fail('写操作需要 --yes（先用 --dry-run 预览）')
-  const { pkg } = await check({ quiet: false })
+  const { pkg } = await check({ quiet: false, scan: !args['no-scan'] })
   const kind = args.bump || 'patch'
   const next = bumpVersion(pkg.version, kind)
   const tag = `v${next}`
@@ -452,7 +533,7 @@ if (!command) {
   process.exit(1)
 }
 if (command === 'doctor') await doctor()
-else if (command === 'check') await check()
+else if (command === 'check') await check({ scan: Boolean(args.scan) })
 else if (command === 'install') await install()
 else if (command === 'release') await release()
 else if (command === 'hub-issue') await hubIssue()

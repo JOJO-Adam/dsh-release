@@ -24,6 +24,9 @@ node skills/dsh-release/scripts/release.mjs doctor
 # 预检（只读）
 node skills/dsh-release/scripts/release.mjs check --dir /path/to/dsh-xxx
 
+# 预检 + 脱敏扫描（包内文件 + ~/.dsh/memory）
+node skills/dsh-release/scripts/release.mjs check --dir /path/to/dsh-xxx --scan
+
 # 预览发布计划
 node skills/dsh-release/scripts/release.mjs release --dir /path/to/dsh-xxx --bump patch --dry-run
 
@@ -56,6 +59,7 @@ node skills/dsh-release/scripts/release.mjs hub-issue --dir /path/to/dsh-xxx \
 - `cordis.patch.yml` 的 name 必须等于 package.json 的 name，否则装不上；
 - scoped 包必须 `publishConfig.access=public`；
 - `npm pack` 不能带 `test/`；
+- 发布前扫明文密钥与本机路径，high 级命中直接阻断（`--no-scan` 可跳过）；
 - 首次发布 registry 有几分钟 202 延迟，必须轮询而不是重发；
 - npmmirror 对新包不同步，发布/安装都显式走 npmjs；
 - pnpm 的 `minimumReleaseAge` 会挡新版本，安装前要写豁免；
