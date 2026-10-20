@@ -27,6 +27,9 @@ node skills/dsh-release/scripts/release.mjs check --dir /path/to/dsh-xxx
 # 预览发布计划
 node skills/dsh-release/scripts/release.mjs release --dir /path/to/dsh-xxx --bump patch --dry-run
 
+# 只安装已发布版本
+node skills/dsh-release/scripts/release.mjs install --dir /path/to/dsh-xxx
+
 # 真发布
 node skills/dsh-release/scripts/release.mjs release --dir /path/to/dsh-xxx --bump patch --yes
 

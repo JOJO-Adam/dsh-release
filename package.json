@@ -1,6 +1,6 @@
 {
   "name": "@jojonadam/dsh-release",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "One-command release pipeline for DSH plugins: preflight checks, version bump, test, commit, SSH push, npm publish, registry verification, desktop install and hub submission. 发布流水线 · 凭据走钥匙串 · 默认只读。",
   "type": "module",
   "main": "lib/index.js",

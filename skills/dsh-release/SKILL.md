@@ -47,6 +47,9 @@ node scripts/release.mjs check --dir /path/to/dsh-xxx
 # 先看计划，不动任何东西
 node scripts/release.mjs release --dir /path/to/dsh-xxx --bump patch --dry-run
 
+# 只安装已发布版本（不发版）
+node scripts/release.mjs install --dir /path/to/dsh-xxx
+
 # 真发（自动 commit + push + tag + publish + 等 registry 生效）
 node scripts/release.mjs release --dir /path/to/dsh-xxx --bump patch --yes
 

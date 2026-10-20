@@ -354,7 +354,7 @@ async function release() {
 }
 
 function installToDesktop(name, version) {
-  if (!existsSync(DSH_CLI)) fail('找不到 dsh CLI，跳过安装（设置 DSH_CLI）')
+  if (!existsSync(DSH_CLI)) fail('找不到 dsh CLI，设置 DSH_CLI 后再试')
   const workspace = join(HOME, '.dsh/profiles/desktop/pnpm-workspace.yaml')
   if (existsSync(workspace)) {
     const text = readFileSync(workspace, 'utf8')
@@ -381,6 +381,13 @@ function installToDesktop(name, version) {
   const installed = join(HOME, '.dsh/profiles/desktop/node_modules', name, 'package.json')
   if (existsSync(installed)) ok(`桌面版已安装 ${readJson(installed).version}`)
   rmSync(shimDir, { recursive: true, force: true })
+}
+
+async function install() {
+  const { pkg } = packageInfo(targetDir)
+  const version = args.version || pkg.version
+  say(`安装 ${pkg.name}@${version} 到 desktop profile`)
+  installToDesktop(pkg.name, version)
 }
 
 async function hubIssue() {
@@ -441,11 +448,12 @@ ${pkg.license || 'MIT'}
 // ---------------------------------------------------------------- main
 
 if (!command) {
-  say('用法：node release.mjs <doctor|check|release|hub-issue> [--dir DIR]')
+  say('用法：node release.mjs <doctor|check|install|release|hub-issue> [--dir DIR]')
   process.exit(1)
 }
 if (command === 'doctor') await doctor()
 else if (command === 'check') await check()
+else if (command === 'install') await install()
 else if (command === 'release') await release()
 else if (command === 'hub-issue') await hubIssue()
 else fail(`未知命令：${command}`)
