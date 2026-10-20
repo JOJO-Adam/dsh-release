@@ -429,13 +429,28 @@ async function release() {
   if (latest !== next) fail(`发布后 10 分钟仍未生效（latest=${latest || '?'}）`)
   ok(`npm 已生效：${name}@${next}`)
 
-  if (args.install) installToDesktop(name, next)
+  if (args.install) await installToDesktop(name, next)
   say(`\n完成：${name}@${next}`)
   say(`npm: https://www.npmjs.com/package/${name}`)
 }
 
-function installToDesktop(name, version) {
+async function waitForVersion(name, version, timeoutMs = 300000) {
+  const deadline = Date.now() + timeoutMs
+  const url = `${REGISTRY}${encodeURIComponent(name)}/${version}`
+  while (Date.now() < deadline) {
+    const response = await fetch(url)
+    if (response.ok) return true
+    await new Promise((resolve) => setTimeout(resolve, 5000))
+  }
+  warn(`版本 ${version} 的 registry 元数据 5 分钟内仍不可用`)
+  return false
+}
+
+async function installToDesktop(name, version) {
   if (!existsSync(DSH_CLI)) fail('找不到 dsh CLI，设置 DSH_CLI 后再试')
+  const installedPath = join(HOME, '.dsh/profiles/desktop/node_modules', name, 'package.json')
+  const previous = existsSync(installedPath) ? readJson(installedPath).version : ''
+  await waitForVersion(name, version)
   const workspace = join(HOME, '.dsh/profiles/desktop/pnpm-workspace.yaml')
   if (existsSync(workspace)) {
     const text = readFileSync(workspace, 'utf8')
@@ -455,10 +470,32 @@ function installToDesktop(name, version) {
   }
   const env = { PATH: `${shimDir}:${process.env.PATH}` }
   sh(DSH_CLI, ['plugin', '--profile', 'desktop', 'remove', name], { allowFail: true, env })
-  sh(DSH_CLI, ['plugin', '--profile', 'desktop', 'add', `${name}@${version}`, '--registry', REGISTRY], {
+  let added = sh(DSH_CLI, ['plugin', '--profile', 'desktop', 'add', `${name}@${version}`, '--registry', REGISTRY], {
+    allowFail: true,
     env,
     timeout: 300000,
   })
+  if (added.status !== 0) {
+    warn('首次安装失败，10 秒后重试一次')
+    await new Promise((resolve) => setTimeout(resolve, 10000))
+    added = sh(DSH_CLI, ['plugin', '--profile', 'desktop', 'add', `${name}@${version}`, '--registry', REGISTRY], {
+      allowFail: true,
+      env,
+      timeout: 300000,
+    })
+  }
+  if (added.status !== 0) {
+    if (previous) {
+      warn(`安装 ${version} 失败，回滚到 ${previous}`)
+      sh(DSH_CLI, ['plugin', '--profile', 'desktop', 'add', `${name}@${previous}`, '--registry', REGISTRY], {
+        allowFail: true,
+        env,
+        timeout: 300000,
+      })
+    }
+    rmSync(shimDir, { recursive: true, force: true })
+    fail(`安装失败：\n${(added.stderr || added.stdout || '').split('\n').slice(-10).join('\n')}`)
+  }
   const installed = join(HOME, '.dsh/profiles/desktop/node_modules', name, 'package.json')
   if (existsSync(installed)) ok(`桌面版已安装 ${readJson(installed).version}`)
   rmSync(shimDir, { recursive: true, force: true })
@@ -468,7 +505,7 @@ async function install() {
   const { pkg } = packageInfo(targetDir)
   const version = args.version || pkg.version
   say(`安装 ${pkg.name}@${version} 到 desktop profile`)
-  installToDesktop(pkg.name, version)
+  await installToDesktop(pkg.name, version)
 }
 
 async function hubIssue() {
